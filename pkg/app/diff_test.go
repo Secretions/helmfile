@@ -16,6 +16,7 @@ import (
 
 type diffConfig struct {
 	args                   string
+	diffArgs               string
 	values                 []string
 	retainValuesFiles      bool
 	set                    []string
@@ -45,6 +46,10 @@ type diffConfig struct {
 
 func (a diffConfig) Args() string {
 	return a.args
+}
+
+func (a diffConfig) DiffArgs() string {
+	return a.diffArgs
 }
 
 func (a diffConfig) Values() []string {
@@ -177,7 +182,7 @@ func TestDiff(t *testing.T) {
 		flags             flags
 		files             map[string]string
 		selectors         []string
-		lists             map[exectest.ListKey]string
+		lists             map[exectest.ListKey]helmexec.HelmReleaseOutput
 		diffs             map[exectest.DiffKey]error
 		upgraded          []exectest.Release
 		deleted           []exectest.Release
@@ -251,25 +256,29 @@ releases:
 			error:            "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
 				// noop on frontend-v2
-				{Name: "frontend-v2", Chart: "charts/frontend", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: nil,
+				{Name: "frontend-v2", Chart: "charts/frontend", Flags: "--kube-context default --detailed-exitcode --reset-values"}: nil,
 				// install frontend-v3
-				{Name: "frontend-v3", Chart: "charts/frontend", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "frontend-v3", Chart: "charts/frontend", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 				// upgrades
-				{Name: "logging", Chart: "charts/fluent-bit", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}:            helmexec.ExitError{Code: 2},
-				{Name: "front-proxy", Chart: "stable/envoy", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}:             helmexec.ExitError{Code: 2},
-				{Name: "servicemesh", Chart: "charts/istio", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}:             helmexec.ExitError{Code: 2},
-				{Name: "database", Chart: "charts/mysql", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}:                helmexec.ExitError{Code: 2},
-				{Name: "backend-v2", Chart: "charts/backend", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}:            helmexec.ExitError{Code: 2},
-				{Name: "anotherbackend", Chart: "charts/anotherbackend", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "logging", Chart: "charts/fluent-bit", Flags: "--kube-context default --detailed-exitcode --reset-values"}:            helmexec.ExitError{Code: 2},
+				{Name: "front-proxy", Chart: "stable/envoy", Flags: "--kube-context default --detailed-exitcode --reset-values"}:             helmexec.ExitError{Code: 2},
+				{Name: "servicemesh", Chart: "charts/istio", Flags: "--kube-context default --detailed-exitcode --reset-values"}:             helmexec.ExitError{Code: 2},
+				{Name: "database", Chart: "charts/mysql", Flags: "--kube-context default --detailed-exitcode --reset-values"}:                helmexec.ExitError{Code: 2},
+				{Name: "backend-v2", Chart: "charts/backend", Flags: "--kube-context default --detailed-exitcode --reset-values"}:            helmexec.ExitError{Code: 2},
+				{Name: "anotherbackend", Chart: "charts/anotherbackend", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
-			lists: map[exectest.ListKey]string{
+			lists: map[exectest.ListKey]helmexec.HelmReleaseOutput{
 				// delete frontend-v1 and backend-v1
-				{Filter: "^frontend-v1$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-frontend-v1 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	backend-3.1.0	3.1.0      	default
-`,
-				{Filter: "^backend-v1$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-backend-v1 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	backend-3.1.0	3.1.0      	default
-`,
+				{Filter: "^frontend-v1$", Flags: listFlags("", "default")}:    {Chart: "backend-3.1.0", Status: "deployed"},
+				{Filter: "^frontend-v2$", Flags: listFlags("", "default")}:    {Chart: "backend-3.1.0", Status: "deployed"},
+				{Filter: "^frontend-v3$", Flags: listFlags("", "default")}:    {},
+				{Filter: "^logging$", Flags: listFlags("", "default")}:        {Chart: "backend-3.1.0", Status: "deployed"},
+				{Filter: "^front-proxy$", Flags: listFlags("", "default")}:    {Chart: "backend-3.1.0", Status: "deployed"},
+				{Filter: "^servicemesh$", Flags: listFlags("", "default")}:    {Chart: "backend-3.1.0", Status: "deployed"},
+				{Filter: "^database$", Flags: listFlags("", "default")}:       {Chart: "backend-3.1.0", Status: "deployed"},
+				{Filter: "^backend-v1$", Flags: listFlags("", "default")}:     {Chart: "backend-3.1.0", Status: "deployed"},
+				{Filter: "^backend-v2$", Flags: listFlags("", "default")}:     {Chart: "backend-3.1.0", Status: "deployed"},
+				{Filter: "^anotherbackend$", Flags: listFlags("", "default")}: {Chart: "backend-3.1.0", Status: "deployed"},
 			},
 			// Disable concurrency to avoid in-deterministic result
 			concurrency: 1,
@@ -297,13 +306,11 @@ releases:
 			detailedExitcode: true,
 			error:            "",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: nil,
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --detailed-exitcode --reset-values"}: nil,
 			},
-			lists: map[exectest.ListKey]string{
-				{Filter: "^foo$", Flags: listFlags("", "default")}: ``,
-				{Filter: "^bar$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-bar 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart2-3.1.0	3.1.0      	default
-`,
+			lists: map[exectest.ListKey]helmexec.HelmReleaseOutput{
+				{Filter: "^foo$", Flags: listFlags("", "default")}: {},
+				{Filter: "^bar$", Flags: listFlags("", "default")}: {Chart: "mychart2-3.1.0", Status: "deployed"},
 			},
 			upgraded: []exectest.Release{},
 			deleted:  []exectest.Release{},
@@ -330,11 +337,15 @@ releases:
 			detailedExitcode: true,
 			error:            "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "baz", Chart: "mychart3", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "baz", Chart: "mychart3", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
-			lists:       map[exectest.ListKey]string{},
+			lists: map[exectest.ListKey]helmexec.HelmReleaseOutput{
+				{Filter: "^foo$", Flags: listFlags("", "default")}: {Chart: "mychart1-3.1.0", Status: "deployed"},
+				{Filter: "^bar$", Flags: listFlags("", "default")}: {Chart: "mychart2-3.1.0", Status: "deployed"},
+				{Filter: "^baz$", Flags: listFlags("", "default")}: {Chart: "mychart3-3.1.0", Status: "deployed"},
+			},
 			upgraded:    []exectest.Release{},
 			deleted:     []exectest.Release{},
 			concurrency: 1,
@@ -359,8 +370,8 @@ releases:
 			detailedExitcode: true,
 			error:            "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
 			upgraded: []exectest.Release{},
 		},
@@ -384,8 +395,8 @@ releases:
 			detailedExitcode: true,
 			error:            "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contexthello/world--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contexthello/world--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context hello/world --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context hello/world --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
 			upgraded: []exectest.Release{},
 		},
@@ -411,8 +422,8 @@ releases:
 			detailedExitcode: true,
 			error:            "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "releaseB", Chart: "mychart2", Flags: "--kube-contextarn:aws:eks:us-east-1:1234567890:cluster/myekscluster--namespacenamespaceA--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "releaseA", Chart: "mychart1", Flags: "--kube-contextarn:aws:eks:us-east-1:1234567890:cluster/myekscluster--namespacenamespaceA--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "releaseB", Chart: "mychart2", Flags: "--kube-context arn:aws:eks:us-east-1:1234567890:cluster/myekscluster --namespace namespaceA --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "releaseA", Chart: "mychart1", Flags: "--kube-context arn:aws:eks:us-east-1:1234567890:cluster/myekscluster --namespace namespaceA --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
 			upgraded: []exectest.Release{},
 		},
@@ -433,8 +444,8 @@ releases:
 			detailedExitcode: true,
 			error:            "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
 			upgraded: []exectest.Release{},
 		},
@@ -456,8 +467,8 @@ releases:
 			detailedExitcode: true,
 			error:            "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--namespacetestNamespace--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--namespacetestNamespace--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --namespace testNamespace --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --namespace testNamespace --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
 			upgraded: []exectest.Release{},
 		},
@@ -479,8 +490,8 @@ releases:
 			detailedExitcode: true,
 			error:            "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--namespacetestNamespace--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--namespacetestNamespace--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --namespace testNamespace --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --namespace testNamespace --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
 			upgraded: []exectest.Release{},
 		},
@@ -503,8 +514,8 @@ releases:
 			detailedExitcode: true,
 			error:            "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--namespacens2--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--namespacens1--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --namespace ns2 --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --namespace ns1 --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
 			upgraded: []exectest.Release{},
 		},
@@ -528,8 +539,8 @@ releases:
 			detailedExitcode: true,
 			error:            "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--namespacens2--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--namespacens1--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --namespace ns2 --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --namespace ns1 --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
 			upgraded: []exectest.Release{},
 		},
@@ -552,8 +563,8 @@ releases:
 			detailedExitcode: true,
 			error:            "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--namespacens2--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--namespacens1--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --namespace ns2 --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --namespace ns1 --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
 			upgraded: []exectest.Release{},
 			// as we check for log output, set concurrency to 1 to avoid non-deterministic test result
@@ -581,16 +592,12 @@ releases:
 			detailedExitcode: true,
 			error:            "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
-			lists: map[exectest.ListKey]string{
-				{Filter: "^foo$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-foo 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart1-3.1.0	3.1.0      	default
-`,
-				{Filter: "^bar$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-bar 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart2-3.1.0	3.1.0      	default
-`,
+			lists: map[exectest.ListKey]helmexec.HelmReleaseOutput{
+				{Filter: "^foo$", Flags: listFlags("", "default")}: {Chart: "mychart1-3.1.0", Status: "deployed"},
+				{Filter: "^bar$", Flags: listFlags("", "default")}: {Chart: "mychart2-3.1.0", Status: "deployed"},
 			},
 			deleted: []exectest.Release{},
 		},
@@ -613,16 +620,12 @@ releases:
 			detailedExitcode: true,
 			error:            "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
-			lists: map[exectest.ListKey]string{
-				{Filter: "^foo$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-foo 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart1-3.1.0	3.1.0      	default
-`,
-				{Filter: "^bar$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-bar 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart2-3.1.0	3.1.0      	default
-`,
+			lists: map[exectest.ListKey]helmexec.HelmReleaseOutput{
+				{Filter: "^foo$", Flags: listFlags("", "default")}: {Chart: "mychart1-3.1.0", Status: "deployed"},
+				{Filter: "^bar$", Flags: listFlags("", "default")}: {Chart: "mychart2-3.1.0", Status: "deployed"},
 			},
 			deleted: []exectest.Release{},
 		},
@@ -647,16 +650,12 @@ releases:
 			detailedExitcode: true,
 			error:            "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
-			lists: map[exectest.ListKey]string{
-				{Filter: "^foo$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-foo 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart1-3.1.0	3.1.0      	default
-`,
-				{Filter: "^bar$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-bar 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart2-3.1.0	3.1.0      	default
-`,
+			lists: map[exectest.ListKey]helmexec.HelmReleaseOutput{
+				{Filter: "^foo$", Flags: listFlags("", "default")}: {Chart: "mychart1-3.1.0", Status: "deployed"},
+				{Filter: "^bar$", Flags: listFlags("", "default")}: {Chart: "mychart2-3.1.0", Status: "deployed"},
 			},
 			upgraded: []exectest.Release{},
 			deleted:  []exectest.Release{},
@@ -679,16 +678,12 @@ releases:
 			detailedExitcode: true,
 			error:            `in ./helmfile.yaml: release "default//foo" depends on "default//bar" which does not match the selectors. Please add a selector like "--selector name=bar", or indicate whether to skip (--skip-needs) or include (--include-needs) these dependencies`,
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
-			lists: map[exectest.ListKey]string{
-				{Filter: "^foo$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-foo 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart1-3.1.0	3.1.0      	default
-`,
-				{Filter: "^bar$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-bar 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart2-3.1.0	3.1.0      	default
-`,
+			lists: map[exectest.ListKey]helmexec.HelmReleaseOutput{
+				{Filter: "^foo$", Flags: listFlags("", "default")}: {Chart: "mychart1-3.1.0", Status: "deployed"},
+				{Filter: "^bar$", Flags: listFlags("", "default")}: {Chart: "mychart2-3.1.0", Status: "deployed"},
 			},
 			upgraded: []exectest.Release{},
 			deleted:  []exectest.Release{},
@@ -714,16 +709,12 @@ releases:
 			},
 			error: "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
-			lists: map[exectest.ListKey]string{
-				{Filter: "^foo$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-foo 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart1-3.1.0	3.1.0      	default
-`,
-				{Filter: "^bar$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-bar 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart2-3.1.0	3.1.0      	default
-`,
+			lists: map[exectest.ListKey]helmexec.HelmReleaseOutput{
+				{Filter: "^foo$", Flags: listFlags("", "default")}: {Chart: "mychart1-3.1.0", Status: "deployed"},
+				{Filter: "^bar$", Flags: listFlags("", "default")}: {Chart: "mychart2-3.1.0", Status: "deployed"},
 			},
 			upgraded: []exectest.Release{},
 			deleted:  []exectest.Release{},
@@ -749,16 +740,12 @@ releases:
 			},
 			error: "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
-			lists: map[exectest.ListKey]string{
-				{Filter: "^foo$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-foo 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart1-3.1.0	3.1.0      	default
-`,
-				{Filter: "^bar$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-bar 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart2-3.1.0	3.1.0      	default
-`,
+			lists: map[exectest.ListKey]helmexec.HelmReleaseOutput{
+				{Filter: "^foo$", Flags: listFlags("", "default")}: {Chart: "mychart1-3.1.0", Status: "deployed"},
+				{Filter: "^bar$", Flags: listFlags("", "default")}: {Chart: "mychart2-3.1.0", Status: "deployed"},
 			},
 			upgraded: []exectest.Release{},
 			deleted:  []exectest.Release{},
@@ -781,16 +768,12 @@ releases:
 			detailedExitcode: true,
 			error:            `in ./helmfile.yaml: release "default//bar" depends on "default//foo" which does not match the selectors. Please add a selector like "--selector name=foo", or indicate whether to skip (--skip-needs) or include (--include-needs) these dependencies`,
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
-			lists: map[exectest.ListKey]string{
-				{Filter: "^foo$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-foo 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart1-3.1.0	3.1.0      	default
-`,
-				{Filter: "^bar$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-bar 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart2-3.1.0	3.1.0      	default
-`,
+			lists: map[exectest.ListKey]helmexec.HelmReleaseOutput{
+				{Filter: "^foo$", Flags: listFlags("", "default")}: {Chart: "mychart1-3.1.0", Status: "deployed"},
+				{Filter: "^bar$", Flags: listFlags("", "default")}: {Chart: "mychart2-3.1.0", Status: "deployed"},
 			},
 			upgraded: []exectest.Release{},
 			deleted:  []exectest.Release{},
@@ -816,16 +799,12 @@ releases:
 			detailedExitcode: true,
 			error:            "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
-			lists: map[exectest.ListKey]string{
-				{Filter: "^foo$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-foo 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart1-3.1.0	3.1.0      	default
-`,
-				{Filter: "^bar$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-bar 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart2-3.1.0	3.1.0      	default
-`,
+			lists: map[exectest.ListKey]helmexec.HelmReleaseOutput{
+				{Filter: "^foo$", Flags: listFlags("", "default")}: {Chart: "mychart1-3.1.0", Status: "deployed"},
+				{Filter: "^bar$", Flags: listFlags("", "default")}: {Chart: "mychart2-3.1.0", Status: "deployed"},
 			},
 			upgraded: []exectest.Release{},
 			deleted:  []exectest.Release{},
@@ -851,16 +830,12 @@ releases:
 			detailedExitcode: true,
 			error:            "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
-			lists: map[exectest.ListKey]string{
-				{Filter: "^foo$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-foo 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart1-3.1.0	3.1.0      	default
-`,
-				{Filter: "^bar$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-bar 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart2-3.1.0	3.1.0      	default
-`,
+			lists: map[exectest.ListKey]helmexec.HelmReleaseOutput{
+				{Filter: "^foo$", Flags: listFlags("", "default")}: {Chart: "mychart1-3.1.0", Status: "deployed"},
+				{Filter: "^bar$", Flags: listFlags("", "default")}: {Chart: "mychart2-3.1.0", Status: "deployed"},
 			},
 			upgraded: []exectest.Release{},
 			deleted:  []exectest.Release{},
@@ -883,16 +858,12 @@ releases:
 			detailedExitcode: true,
 			error:            "Identified at least one change",
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart2", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart2", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
 			},
-			lists: map[exectest.ListKey]string{
-				{Filter: "^foo$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-foo 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart1-3.1.0	3.1.0      	default
-`,
-				{Filter: "^bar$", Flags: listFlags("", "default")}: `NAME	REVISION	UPDATED                 	STATUS  	CHART        	APP VERSION	NAMESPACE
-bar 	4       	Fri Nov  1 08:40:07 2019	DEPLOYED	mychart2-3.1.0	3.1.0      	default
-`,
+			lists: map[exectest.ListKey]helmexec.HelmReleaseOutput{
+				{Filter: "^foo$", Flags: listFlags("", "default")}: {Chart: "mychart1-3.1.0", Status: "deployed"},
+				{Filter: "^bar$", Flags: listFlags("", "default")}: {Chart: "mychart2-3.1.0", Status: "deployed"},
 			},
 			upgraded: []exectest.Release{},
 			deleted:  []exectest.Release{},
@@ -934,8 +905,8 @@ releases:
 			selectors:        []string{"app=test"},
 			detailedExitcode: true,
 			diffs: map[exectest.DiffKey]error{
-				{Name: "external-secrets", Chart: "incubator/raw", Flags: "--kube-contextdefault--namespacedefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "my-release", Chart: "incubator/raw", Flags: "--kube-contextdefault--namespacedefault--detailed-exitcode--reset-values"}:       helmexec.ExitError{Code: 2},
+				{Name: "external-secrets", Chart: "incubator/raw", Flags: "--kube-context default --namespace default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "my-release", Chart: "incubator/raw", Flags: "--kube-context default --namespace default --detailed-exitcode --reset-values"}:       helmexec.ExitError{Code: 2},
 			},
 			upgraded: []exectest.Release{},
 			// as we check for log output, set concurrency to 1 to avoid non-deterministic test result
@@ -975,8 +946,8 @@ releases:
 			selectors:        []string{"app=test"},
 			detailedExitcode: true,
 			diffs: map[exectest.DiffKey]error{
-				{Name: "external-secrets", Chart: "incubator/raw", Flags: "--kube-contextdefault--namespacedefault--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "my-release", Chart: "incubator/raw", Flags: "--kube-contextdefault--namespacedefault--detailed-exitcode--reset-values"}:       helmexec.ExitError{Code: 2},
+				{Name: "external-secrets", Chart: "incubator/raw", Flags: "--kube-context default --namespace default --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "my-release", Chart: "incubator/raw", Flags: "--kube-context default --namespace default --detailed-exitcode --reset-values"}:       helmexec.ExitError{Code: 2},
 			},
 			upgraded: []exectest.Release{},
 			// as we check for log output, set concurrency to 1 to avoid non-deterministic test result
@@ -1175,10 +1146,10 @@ releases:
 			detailedExitcode: true,
 			selectors:        []string{"name=foo"},
 			diffs: map[exectest.DiffKey]error{
-				{Name: "bar", Chart: "mychart3", Flags: "--kube-contextdefault--namespacens1--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}:               helmexec.ExitError{Code: 2},
+				{Name: "bar", Chart: "mychart3", Flags: "--kube-context default --namespace ns1 --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --detailed-exitcode --reset-values"}:                 helmexec.ExitError{Code: 2},
 			},
-			lists:       map[exectest.ListKey]string{},
+			lists:       map[exectest.ListKey]helmexec.HelmReleaseOutput{},
 			upgraded:    []exectest.Release{},
 			deleted:     []exectest.Release{},
 			concurrency: 1,
@@ -1238,10 +1209,10 @@ releases:
 			},
 			detailedExitcode: true,
 			diffs: map[exectest.DiffKey]error{
-				{Name: "baz", Chart: "mychart3", Flags: "--kube-contextdefault--namespacens1--detailed-exitcode--reset-values"}: helmexec.ExitError{Code: 2},
-				{Name: "foo", Chart: "mychart1", Flags: "--kube-contextdefault--detailed-exitcode--reset-values"}:               helmexec.ExitError{Code: 2},
+				{Name: "baz", Chart: "mychart3", Flags: "--kube-context default --namespace ns1 --detailed-exitcode --reset-values"}: helmexec.ExitError{Code: 2},
+				{Name: "foo", Chart: "mychart1", Flags: "--kube-context default --detailed-exitcode --reset-values"}:                 helmexec.ExitError{Code: 2},
 			},
-			lists:       map[exectest.ListKey]string{},
+			lists:       map[exectest.ListKey]helmexec.HelmReleaseOutput{},
 			upgraded:    []exectest.Release{},
 			deleted:     []exectest.Release{},
 			concurrency: 1,

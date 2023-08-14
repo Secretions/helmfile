@@ -13,6 +13,7 @@ import (
 	"github.com/helmfile/helmfile/pkg/environment"
 	"github.com/helmfile/helmfile/pkg/filesystem"
 	"github.com/helmfile/helmfile/pkg/helmexec"
+	"github.com/helmfile/helmfile/pkg/policy"
 	"github.com/helmfile/helmfile/pkg/remote"
 	"github.com/helmfile/helmfile/pkg/runtime"
 	"github.com/helmfile/helmfile/pkg/state"
@@ -187,8 +188,16 @@ func (a *desiredStateLoader) rawLoad(yaml []byte, baseDir, file string, evaluate
 func (ld *desiredStateLoader) load(env, overrodeEnv *environment.Environment, baseDir, filename string, content []byte, evaluateBases bool) (*state.HelmState, error) {
 	// Allows part-splitting to work with CLRF-ed content
 	normalizedContent := bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n"))
+	isStrict, err := policy.Checker(filename, normalizedContent)
+	if err != nil {
+		if isStrict {
+			return nil, err
+		}
+		ld.logger.Warnf("WARNING: %v", err)
+	}
 	parts := bytes.Split(normalizedContent, []byte("\n---\n"))
 
+	hasEnv := env != nil || overrodeEnv != nil
 	var finalState *state.HelmState
 
 	for i, part := range parts {
@@ -267,7 +276,7 @@ func (ld *desiredStateLoader) load(env, overrodeEnv *environment.Environment, ba
 
 	// If environments are not defined in the helmfile at all although the env is specified,
 	// it's a missing env situation. Let's fail.
-	if len(finalState.Environments) == 0 && evaluateBases && env.Name != state.DefaultEnv {
+	if len(finalState.Environments) == 0 && evaluateBases && !hasEnv && env.Name != state.DefaultEnv {
 		return nil, &state.StateLoadError{
 			Msg:   fmt.Sprintf("failed to read %s", finalState.FilePath),
 			Cause: &state.UndefinedEnvError{Env: env.Name},
