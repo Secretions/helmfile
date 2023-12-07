@@ -306,7 +306,7 @@ func (helm *execer) List(context HelmContext, filter string, flags ...string) (r
 	var listOutput []HelmReleaseOutput
 	yamlErr := yaml.Unmarshal(out, &listOutput)
 	if yamlErr != nil {
-		panic(err)
+		return
 	}
 
 	if len(listOutput) > 0 {
