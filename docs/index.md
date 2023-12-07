@@ -63,27 +63,16 @@ To avoid upgrades for each iteration of `helm`, the `helmfile` executable delega
 
 ### Running as a container
 
-The [Helmfile Docker images are available in GHCR](https://github.com/helmfile/helmfile/pkgs/container/helmfile). There is no `latest` tag, since the `0.x` versions can contain breaking changes, so make sure you pick the right tag. Example using `helmfile 0.145.2`:
+The [Helmfile Docker images are available in GHCR](https://github.com/helmfile/helmfile/pkgs/container/helmfile). There is no `latest` tag, since the `0.x` versions can contain breaking changes, so make sure you pick the right tag. Example using `helmfile 0.156.0`:
 
 ```sh-session
-# helm 2
-$ docker run --rm --net=host -v "${HOME}/.kube:/root/.kube" -v "${HOME}/.helm:/root/.helm" -v "${PWD}:/wd" --workdir /wd ghcr.io/helmfile/helmfile:v0.145.2 helmfile sync
-
-# helm 3
-$ docker run --rm --net=host -v "${HOME}/.kube:/root/.kube" -v "${HOME}/.config/helm:/root/.config/helm" -v "${PWD}:/wd" --workdir /wd ghcr.io/helmfile/helmfile:helm3-v0.145.2 helmfile sync
+$ docker run --rm --net=host -v "${HOME}/.kube:/helm/.kube" -v "${HOME}/.config/helm:/helm/.config/helm" -v "${PWD}:/wd" --workdir /wd ghcr.io/helmfile/helmfile:v0.156.0 helmfile sync
 ```
 
-You can also use shims to make calling the binaries easier:
+You can also use a shim to make calling the binary easier:
 
 ```sh-session
-# helm 2
-$ printf '%s\n' '#!/bin/sh' 'docker run --rm --net=host -v "${HOME}/.kube:/root/.kube" -v "${HOME}/.helm:/root/.helm" -v "${PWD}:/wd" --workdir /wd ghcr.io/helmfile/helmfile:v0.145.2 helmfile "$@"' |
-    tee helmfile
-$ chmod +x helmfile
-$ ./helmfile sync
-
-# helm 3
-$ printf '%s\n' '#!/bin/sh' 'docker run --rm --net=host -v "${HOME}/.kube:/root/.kube" -v "${HOME}/.config/helm:/root/.config/helm" -v "${PWD}:/wd" --workdir /wd ghcr.io/helmfile/helmfile:helm3-v0.145.2 helmfile "$@"' |
+$ printf '%s\n' '#!/bin/sh' 'docker run --rm --net=host -v "${HOME}/.kube:/helm/.kube" -v "${HOME}/.config/helm:/helm/.config/helm" -v "${PWD}:/wd" --workdir /wd ghcr.io/helmfile/helmfile:v0.156.0 helmfile "$@"' |
     tee helmfile
 $ chmod +x helmfile
 $ ./helmfile sync
@@ -107,6 +96,12 @@ releases:
   set:
   - name: rbac.create
     value: false
+```
+
+Install required dependencies using [init](https://helmfile.readthedocs.io/en/latest/#init):
+
+```console
+helmfile init
 ```
 
 Sync your Kubernetes cluster state to the desired one by running:
@@ -155,6 +150,8 @@ repositories:
   password: optional_password
   oci: true
   passCredentials: true
+  verify: true
+  keyring: path/to/keyring.gpg
 # Advanced configuration: You can use a ca bundle to use an https repo
 # with a self-signed certificate
 - name: insecure
@@ -170,6 +167,8 @@ repositories:
 # Path to alternative helm binary (--helm-binary)
 helmBinary: path/to/helm3
 
+# Path to alternative kustomize binary (--kustomize-binary)
+kustomizeBinary: path/to/kustomize
 
 # Path to alternative lock file. The default is <state file name>.lock, i.e for helmfile.yaml it's helmfile.lock.
 lockFilePath: path/to/lock.file
@@ -183,8 +182,11 @@ helmDefaults:
   # additional and global args passed to helm (default "")
   args:
     - "--set k=v"
+  diffArgs:
+    - "--suppress-secrets"
   # verify the chart before upgrading (only works with packaged charts not directories) (default false)
   verify: true
+  keyring: path/to/keyring.gpg
   # wait for k8s resources via --wait. (default false)
   wait: true
   # if set and --wait enabled, will wait until all Jobs have been completed before marking the release as successful. It will wait for as long as --timeout (default false, Implemented in Helm3.5)
@@ -277,6 +279,7 @@ releases:
       - vault_secret.yaml
     # Override helmDefaults options for verify, wait, waitForJobs, timeout, recreatePods and force.
     verify: true
+    keyring: path/to/keyring.gpg
     wait: true
     waitForJobs: true
     timeout: 60
@@ -555,6 +558,7 @@ Flags:
   -h, --help                              help for helmfile
   -i, --interactive                       Request confirmation before attempting to modify clusters
       --kube-context string               Set kubectl context. Uses current context by default
+  -k, --kustomize-binary string           Path to the kustomize binary (default "kustomize")
       --log-level string                  Set log level, default info (default "info")
   -n, --namespace string                  Set namespace. Uses the namespace set in the context by default, and is available in templates as {{ .Namespace }}
       --no-color                          Output without color
@@ -566,7 +570,7 @@ Flags:
       --skip-deps                         skip running "helm repo update" and "helm dependency build"
       --state-values-file stringArray     specify state values in a YAML file. Used to override .Values within the helmfile template (not values template).
       --state-values-set stringArray      set state values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2). Used to override .Values within the helmfile template (not values template).
-      --strip-args-values-on-exit-error   On exit error, strip the values of the args
+      --strip-args-values-on-exit-error   Strip the potential secret values of the helm command args contained in a helmfile error message (default true)
   -v, --version                           version for helmfile
 
 Use "helmfile [command] --help" for more information about a command.

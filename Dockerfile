@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.20-alpine as builder
+FROM --platform=$BUILDPLATFORM golang:1.21-alpine as builder
 
 RUN apk add --no-cache make git
 WORKDIR /workspace/helmfile
@@ -78,7 +78,7 @@ RUN set -x && \
 ENV SOPS_VERSION="v3.7.3"
 ARG SOPS_FILENAME="sops-${SOPS_VERSION}.${TARGETOS}.${TARGETARCH}"
 RUN set -x && \
-    curl --retry 5 --retry-connrefused -LO "https://github.com/mozilla/sops/releases/download/${SOPS_VERSION}/${SOPS_FILENAME}" && \
+    curl --retry 5 --retry-connrefused -LO "https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/${SOPS_FILENAME}" && \
     chmod +x "${SOPS_FILENAME}" && \
     mv "${SOPS_FILENAME}" /usr/local/bin/sops && \
     sops --version | grep -E "^sops ${SOPS_VERSION#v}"
