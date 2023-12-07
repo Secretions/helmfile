@@ -15,16 +15,18 @@ import (
 
 func TestDestroy_2(t *testing.T) {
 	type testcase struct {
-		ns          string
-		concurrency int
-		error       string
-		files       map[string]string
-		selectors   []string
-		lists       map[exectest.ListKey]helmexec.HelmReleaseOutput
-		diffs       map[exectest.DiffKey]error
-		upgraded    []exectest.Release
-		deleted     []exectest.Release
-		log         string
+		ns            string
+		concurrency   int
+		error         string
+		files         map[string]string
+		selectors     []string
+		lists         map[exectest.ListKey]string
+		diffs         map[exectest.DiffKey]error
+		upgraded      []exectest.Release
+		deleted       []exectest.Release
+		log           string
+		deleteWait    bool
+		deleteTimeout int
 	}
 
 	check := func(t *testing.T, tc testcase) {
@@ -77,6 +79,8 @@ func TestDestroy_2(t *testing.T) {
 				concurrency:            tc.concurrency,
 				logger:                 logger,
 				includeTransitiveNeeds: false,
+				deleteWait:             tc.deleteWait,
+				deleteTimeout:          tc.deleteTimeout,
 			})
 
 			switch {
@@ -413,6 +417,9 @@ changing working directory back to "/path/to"
 				{Filter: "^database$", Flags: helmV3ListFlagsWithoutKubeContext}:       {Chart: "mysql-3.1.0", Status: "deployed"},
 				{Filter: "^anotherbackend$", Flags: helmV3ListFlagsWithoutKubeContext}: {Chart: "anotherbackend-3.1.0", Status: "deployed"},
 			},
+			// Enable wait and set timeout for destroy
+			deleteWait:    true,
+			deleteTimeout: 300,
 			// Disable concurrency to avoid in-deterministic result
 			concurrency: 1,
 			upgraded:    []exectest.Release{},

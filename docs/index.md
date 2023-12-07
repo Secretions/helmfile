@@ -116,7 +116,7 @@ Iterate on the `helmfile.yaml` by referencing:
 
 * [Configuration](#configuration)
 * [CLI reference](#cli-reference).
-* [Helmfile Best Practices Guide](https://github.com/roboll/helmfile/blob/master/docs/writing-helmfile.md)
+* [Helmfile Best Practices Guide](writing-helmfile.md)
 
 ## Configuration
 
@@ -155,8 +155,8 @@ repositories:
 # Advanced configuration: You can use a ca bundle to use an https repo
 # with a self-signed certificate
 - name: insecure
-   url: https://charts.my-insecure-domain.com
-   caFile: optional_ca_crt
+  url: https://charts.my-insecure-domain.com
+  caFile: optional_ca_crt
 # Advanced configuration: You can skip the verification of TLS for an https repo
 - name: skipTLS
   url: https://ss.my-insecure-domain.com
@@ -211,10 +211,20 @@ helmDefaults:
   reuseValues: false
   # propagate `--post-renderer` to helmv3 template and helm install
   postRenderer: "path/to/postRenderer"
+  # propagate `--post-renderer-args` to helmv3 template and helm install. This allows using Powershell
+  # scripts on Windows as a post renderer
+  postRendererArgs:
+  - PowerShell
+  - "-Command"
+  - "theScript.ps1"
   #	cascade `--cascade` to helmv3 delete, available values: background, foreground, or orphan, default: background
   cascade: "background"
   # insecureSkipTLSVerify is true if the TLS verification should be skipped when fetching remote chart
   insecureSkipTLSVerify: false
+  # --wait flag for destroy/delete, if set to true, will wait until all resources are deleted before mark delete command as successful
+  deleteWait: false
+  # Timeout is the time in seconds to wait for helmfile destroy/delete (default 300)
+  deleteTimeout: 300
 
 # these labels will be applied to all releases in a Helmfile. Useful in templating if you have a helmfile per environment or customer and don't want to copy the same label to each release
 commonLabels:
@@ -314,6 +324,12 @@ releases:
     skipDeps: false
     # propagate `--post-renderer` to helmv3 template and helm install
     postRenderer: "path/to/postRenderer"
+    # propagate `--post-renderer-args` to helmv3 template and helm install. This allows using Powershell
+    # scripts on Windows as a post renderer
+    postRendererArgs:
+    - PowerShell
+    - "-Command"
+    - "theScript.ps1"
     # cascade `--cascade` to helmv3 delete, available values: background, foreground, or orphan, default: background
     cascade: "background"
     # insecureSkipTLSVerify is true if the TLS verification should be skipped when fetching remote chart
@@ -447,22 +463,26 @@ Helmfile uses [Go templates](https://godoc.org/text/template) for templating you
 
 We also added the following functions:
 
-* `requiredEnv`
-* `exec`
-* `envExec`
-* `readFile`
-* `readDir`
-* `readDirEntries`
-* `toYaml`
-* `fromYaml`
-* `setValueAtPath`
-* `get` (Sprig's original `get` is available as `sprigGet`)
-* `tpl`
-* `required`
-* `fetchSecretValue`
-* `expandSecretRefs`
+* [`env`](templating_funcs.md#env)
+* [`requiredEnv`](templating_funcs.md#requiredenv)
+* [`exec`](templating_funcs.md#exec)
+* [`envExec`](templating_funcs.md#envexec)
+* [`readFile`](templating_funcs.md#readfile)
+* [`readDir`](templating_funcs.md#readdir)
+* [`readDirEntries`](templating_funcs.md#readdirentries)
+* [`toYaml`](templating_funcs.md#toyaml)
+* [`fromYaml`](templating_funcs.md#fromyaml)
+* [`setValueAtPath`](templating_funcs.md#setvalueatpath)
+* [`get`](templating_funcs.md#get) (Sprig's original `get` is available as `sprigGet`)
+* [`getOrNil`](templating_funcs.md#getornil)
+* [`tpl`](templating_funcs.md#tpl)
+* [`required`](templating_funcs.md#required)
+* [`fetchSecretValue`](templating_funcs.md#fetchsecretvalue)
+* [`expandSecretRefs`](templating_funcs.md#expandsecretrefs)
+* [`include`](templating_funcs.md#include)
 
-More details on each function can be found at ["Template Functions" page in our documentation](templating_funcs.md).
+More details on each function can be found at the ["Template Functions" page in our documentation](templating_funcs.md).
+
 
 ## Using environment variables
 
@@ -969,6 +989,15 @@ environments:
 
 releases:
   - ...
+```
+
+Since Helmfile v0.158.0, support more protocols, such as: s3, https, http
+```
+values:
+  - s3::https://helm-s3-values-example.s3.us-east-2.amazonaws.com/values.yaml
+  - s3://helm-s3-values-example/subdir/values.yaml
+  - https://john:doe@helm-s3-values-example.s3.us-east-2.amazonaws.com/values.yaml
+  - http://helm-s3-values-example.s3.us-east-2.amazonaws.com/values.yaml
 ```
 
 For more information about the supported protocols see: [go-getter Protocol-Specific Options](https://github.com/hashicorp/go-getter#protocol-specific-options-1).

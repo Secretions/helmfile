@@ -17,6 +17,7 @@ import (
 	"github.com/helmfile/helmfile/pkg/filesystem"
 	"github.com/helmfile/helmfile/pkg/helmexec"
 	"github.com/helmfile/helmfile/pkg/testhelper"
+	"github.com/helmfile/helmfile/pkg/testutil"
 )
 
 var logger = helmexec.NewLogger(io.Discard, "warn")
@@ -2581,7 +2582,28 @@ func TestHelmState_Delete(t *testing.T) {
 		namespace      string
 		kubeContext    string
 		defKubeContext string
+		deleteWait     bool
+		deleteTimeout  int
 	}{
+		{
+			name:       "delete wait enabled",
+			deleteWait: true,
+			wantErr:    false,
+			desired:    boolValue(true),
+			installed:  true,
+			purge:      false,
+			deleted:    []exectest.Release{{Name: "releaseA", Flags: []string{"--wait"}}},
+		},
+		{
+			name:          "delete wait with deleteTimeout",
+			deleteWait:    true,
+			deleteTimeout: 800,
+			wantErr:       false,
+			desired:       boolValue(true),
+			installed:     true,
+			purge:         false,
+			deleted:       []exectest.Release{{Name: "releaseA", Flags: []string{"--wait", "--timeout", "800s"}}},
+		},
 		{
 			name:      "desired and installed (purge=false)",
 			wantErr:   false,
@@ -2712,7 +2734,9 @@ func TestHelmState_Delete(t *testing.T) {
 			state := &HelmState{
 				ReleaseSetSpec: ReleaseSetSpec{
 					HelmDefaults: HelmSpec{
-						KubeContext: tt.defKubeContext,
+						KubeContext:   tt.defKubeContext,
+						DeleteWait:    tt.deleteWait,
+						DeleteTimeout: tt.deleteTimeout,
 					},
 					Releases: releases,
 				},
@@ -3132,6 +3156,8 @@ func TestGetOCIQualifiedChartName(t *testing.T) {
 			chartName          string
 			chartVersion       string
 		}
+		helmVersion string
+		wantErr     bool
 	}{
 		{
 			state: HelmState{
@@ -3145,6 +3171,7 @@ func TestGetOCIQualifiedChartName(t *testing.T) {
 					},
 				},
 			},
+			helmVersion: "3.13.2",
 			expected: []struct {
 				qualifiedChartName string
 				chartName          string
@@ -3152,6 +3179,35 @@ func TestGetOCIQualifiedChartName(t *testing.T) {
 			}{
 				{"registry/chart-path/chart-name:0.1.2", "chart-name", "0.1.2"},
 			},
+		},
+		{
+			state: HelmState{
+				ReleaseSetSpec: ReleaseSetSpec{
+					Repositories: []RepositorySpec{},
+					Releases: []ReleaseSpec{
+						{
+							Chart:   "oci://registry/chart-path/chart-name",
+							Version: "latest",
+						},
+					},
+				},
+			},
+			helmVersion: "3.13.2",
+			wantErr:     true,
+		},
+		{
+			state: HelmState{
+				ReleaseSetSpec: ReleaseSetSpec{
+					Repositories: []RepositorySpec{},
+					Releases: []ReleaseSpec{
+						{
+							Chart:   "oci://registry/chart-path/chart-name",
+							Version: "latest",
+						},
+					},
+				},
+			},
+			helmVersion: "3.7.0",
 		},
 		{
 			state: HelmState{
@@ -3171,6 +3227,7 @@ func TestGetOCIQualifiedChartName(t *testing.T) {
 					},
 				},
 			},
+			helmVersion: "3.13.2",
 			expected: []struct {
 				qualifiedChartName string
 				chartName          string
@@ -3183,11 +3240,19 @@ func TestGetOCIQualifiedChartName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%+v", tt.expected), func(t *testing.T) {
+			helm := testutil.NewVersionHelmExec(tt.helmVersion)
 			for i, r := range tt.state.Releases {
-				qualifiedChartName, chartName, chartVersion := tt.state.getOCIQualifiedChartName(&r)
-				require.Equalf(t, qualifiedChartName, tt.expected[i].qualifiedChartName, "qualifiedChartName got = %v, want %v", qualifiedChartName, tt.expected[i].qualifiedChartName)
-				require.Equalf(t, chartName, tt.expected[i].chartName, "chartName got = %v, want %v", chartName, tt.expected[i].chartName)
-				require.Equalf(t, chartVersion, tt.expected[i].chartVersion, "chartVersion got = %v, want %v", chartVersion, tt.expected[i].chartVersion)
+				qualifiedChartName, chartName, chartVersion, err := tt.state.getOCIQualifiedChartName(&r, helm)
+				if tt.wantErr {
+					require.Error(t, err, "getOCIQualifiedChartName() error = nil, want error")
+					return
+				}
+				require.NoError(t, err, "getOCIQualifiedChartName() error = %v, want nil", err)
+				if len(tt.expected) > 0 {
+					require.Equalf(t, qualifiedChartName, tt.expected[i].qualifiedChartName, "qualifiedChartName got = %v, want %v", qualifiedChartName, tt.expected[i].qualifiedChartName)
+					require.Equalf(t, chartName, tt.expected[i].chartName, "chartName got = %v, want %v", chartName, tt.expected[i].chartName)
+					require.Equalf(t, chartVersion, tt.expected[i].chartVersion, "chartVersion got = %v, want %v", chartVersion, tt.expected[i].chartVersion)
+				}
 			}
 		})
 	}

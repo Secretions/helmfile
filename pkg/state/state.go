@@ -25,6 +25,7 @@ import (
 	"go.uber.org/zap"
 	"helm.sh/helm/v3/pkg/cli"
 
+	"github.com/helmfile/helmfile/pkg/argparser"
 	"github.com/helmfile/helmfile/pkg/environment"
 	"github.com/helmfile/helmfile/pkg/event"
 	"github.com/helmfile/helmfile/pkg/filesystem"
@@ -182,6 +183,8 @@ type HelmSpec struct {
 	ReuseValues bool `yaml:"reuseValues"`
 	// Propagate '--post-renderer' to helmv3 template and helm install
 	PostRenderer *string `yaml:"postRenderer,omitempty"`
+	// Propagate '--post-renderer-args' to helmv3 template and helm install
+	PostRendererArgs []string `yaml:"postRendererArgs,omitempty"`
 	// Cascade '--cascade' to helmv3 delete, available values: background, foreground, or orphan, default: background
 	Cascade *string `yaml:"cascade,omitempty"`
 
@@ -189,6 +192,10 @@ type HelmSpec struct {
 	DisableOpenAPIValidation *bool `yaml:"disableOpenAPIValidation,omitempty"`
 	// InsecureSkipTLSVerify is true if the TLS verification should be skipped when fetching remote chart
 	InsecureSkipTLSVerify bool `yaml:"insecureSkipTLSVerify,omitempty"`
+	// Wait, if set to true, will wait until all resources are deleted before mark delete command as successful
+	DeleteWait bool `yaml:"deleteWait"`
+	// Timeout is the time in seconds to wait for helmfile delete command (default 300)
+	DeleteTimeout int `yaml:"deleteTimeout"`
 }
 
 // RepositorySpec that defines values for a helm repo
@@ -356,6 +363,9 @@ type ReleaseSpec struct {
 	// Propagate '--post-renderer' to helmv3 template and helm install
 	PostRenderer *string `yaml:"postRenderer,omitempty"`
 
+	// Propagate '--post-renderer-args' to helmv3 template and helm install
+	PostRendererArgs []string `yaml:"postRendererArgs,omitempty"`
+
 	// Cascade '--cascade' to helmv3 delete, available values: background, foreground, or orphan, default: background
 	Cascade *string `yaml:"cascade,omitempty"`
 
@@ -364,6 +374,11 @@ type ReleaseSpec struct {
 
 	// SuppressDiff skip the helm diff output. Useful for charts which produces large not helpful diff.
 	SuppressDiff *bool `yaml:"suppressDiff,omitempty"`
+
+	// --wait flag for destroy/delete, if set to true, will wait until all resources are deleted before mark delete command as successful
+	DeleteWait *bool `yaml:"deleteWait,omitempty"`
+	// Timeout is the time in seconds to wait for helmfile delete command (default 300)
+	DeleteTimeout *int `yaml:"deleteTimeout,omitempty"`
 }
 
 func (r *Inherits) UnmarshalYAML(unmarshal func(any) error) error {
@@ -637,14 +652,6 @@ func (st *HelmState) prepareSyncReleases(helm helmexec.Interface, additionalValu
 					flags = append(flags, "--skip-crds")
 				}
 
-				if opts.Wait {
-					flags = append(flags, "--wait")
-				}
-
-				if opts.WaitForJobs {
-					flags = append(flags, "--wait-for-jobs")
-				}
-
 				flags = st.appendValuesControlModeFlag(flags, opts.ReuseValues, opts.ResetValues)
 
 				if len(errs) > 0 {
@@ -721,14 +728,15 @@ func (st *HelmState) DetectReleasesToBeDeleted(helm helmexec.Interface, releases
 }
 
 type SyncOpts struct {
-	Set          []string
-	SkipCleanup  bool
-	SkipCRDs     bool
-	Wait         bool
-	WaitForJobs  bool
-	ReuseValues  bool
-	ResetValues  bool
-	PostRenderer string
+	Set              []string
+	SkipCleanup      bool
+	SkipCRDs         bool
+	Wait             bool
+	WaitForJobs      bool
+	ReuseValues      bool
+	ResetValues      bool
+	PostRenderer     string
+	PostRendererArgs []string
 }
 
 type SyncOpt interface{ Apply(*SyncOpts) }
@@ -769,6 +777,22 @@ func ReleaseToID(r *ReleaseSpec) string {
 	return id
 }
 
+func (st *HelmState) appendDeleteWaitFlags(args []string, release *ReleaseSpec) []string {
+	if release.DeleteWait != nil && *release.DeleteWait || release.DeleteWait == nil && st.HelmDefaults.DeleteWait {
+		args = append(args, "--wait")
+		timeout := st.HelmDefaults.DeleteTimeout
+		if release.DeleteTimeout != nil {
+			timeout = *release.DeleteTimeout
+		}
+		if timeout != 0 {
+			duration := strconv.Itoa(timeout)
+			duration += "s"
+			args = append(args, "--timeout", duration)
+		}
+	}
+	return args
+}
+
 // DeleteReleasesForSync deletes releases that are marked for deletion
 func (st *HelmState) DeleteReleasesForSync(affectedReleases *AffectedReleases, helm helmexec.Interface, workerLimit int, cascade string) []error {
 	errs := []error{}
@@ -804,6 +828,7 @@ func (st *HelmState) DeleteReleasesForSync(affectedReleases *AffectedReleases, h
 					if release.Namespace != "" {
 						args = append(args, "--namespace", release.Namespace)
 					}
+					args = st.appendDeleteWaitFlags(args, release)
 					args = st.appendConnectionFlags(args, release)
 					deletionFlags := st.appendCascadeFlags(args, helm, release, cascade)
 
@@ -1024,7 +1049,7 @@ func releasesNeedCharts(releases []ReleaseSpec) []ReleaseSpec {
 	var result []ReleaseSpec
 
 	for _, r := range releases {
-		if r.Installed != nil && !*r.Installed {
+		if !r.Desired() {
 			continue
 		}
 		result = append(result, r)
@@ -1051,6 +1076,9 @@ type ChartPrepareOptions struct {
 	Concurrency            int
 	KubeVersion            string
 	Set                    []string
+	// Delete wait
+	DeleteWait    bool
+	DeleteTimeout int
 }
 
 type chartPrepareResult struct {
@@ -1403,6 +1431,7 @@ type TemplateOpts struct {
 	IncludeCRDs       bool
 	SkipTests         bool
 	PostRenderer      string
+	PostRendererArgs  []string
 	KubeVersion       string
 }
 
@@ -1926,6 +1955,7 @@ type DiffOpts struct {
 	ReuseValues       bool
 	ResetValues       bool
 	PostRenderer      string
+	PostRendererArgs  []string
 }
 
 func (o *DiffOpts) Apply(opts *DiffOpts) {
@@ -2072,10 +2102,10 @@ func (st *HelmState) DeleteReleases(affectedReleases *AffectedReleases, helm hel
 		flags := make([]string, 0)
 		flags = st.appendConnectionFlags(flags, &release)
 		flags = st.appendCascadeFlags(flags, helm, &release, cascade)
+		flags = st.appendDeleteWaitFlags(flags, &release)
 		if release.Namespace != "" {
 			flags = append(flags, "--namespace", release.Namespace)
 		}
-
 		context := st.createHelmContext(&release, workerIndex)
 
 		start := time.Now()
@@ -2464,6 +2494,16 @@ func (st *HelmState) appendConnectionFlags(flags []string, release *ReleaseSpec)
 	return flags
 }
 
+func (st *HelmState) appendExtraDiffFlags(flags []string, opt *DiffOpts) []string {
+	switch {
+	case opt != nil && opt.DiffArgs != "":
+		flags = append(flags, argparser.CollectArgs(opt.DiffArgs)...)
+	case st.HelmDefaults.DiffArgs != nil:
+		flags = append(flags, argparser.CollectArgs(strings.Join(st.HelmDefaults.DiffArgs, " "))...)
+	}
+	return flags
+}
+
 // appendKeyringFlags append all the helm command-line flags related to keyring
 func (st *HelmState) appendKeyringFlags(flags []string, release *ReleaseSpec) []string {
 	switch {
@@ -2527,13 +2567,8 @@ func (st *HelmState) flagsForUpgrade(helm helmexec.Interface, release *ReleaseSp
 		flags = append(flags, "--enable-dns")
 	}
 
-	if release.Wait != nil && *release.Wait || release.Wait == nil && st.HelmDefaults.Wait {
-		flags = append(flags, "--wait")
-	}
-
-	if release.WaitForJobs != nil && *release.WaitForJobs || release.WaitForJobs == nil && st.HelmDefaults.WaitForJobs {
-		flags = append(flags, "--wait-for-jobs")
-	}
+	flags = st.appendWaitFlags(flags, release, opt)
+	flags = st.appendWaitForJobsFlags(flags, release, opt)
 
 	flags = append(flags, st.timeoutFlags(release)...)
 
@@ -2579,6 +2614,12 @@ func (st *HelmState) flagsForUpgrade(helm helmexec.Interface, release *ReleaseSp
 	}
 	flags = st.appendPostRenderFlags(flags, release, postRenderer)
 
+	var postRendererArgs []string
+	if opt != nil {
+		postRendererArgs = opt.PostRendererArgs
+	}
+	flags = st.appendPostRenderArgsFlags(flags, release, postRendererArgs)
+
 	common, clean, err := st.namespaceAndValuesFlags(helm, release, workerIndex)
 	if err != nil {
 		return nil, clean, err
@@ -2594,12 +2635,15 @@ func (st *HelmState) flagsForTemplate(helm helmexec.Interface, release *ReleaseS
 	flags = st.appendHelmXFlags(flags, release)
 
 	postRenderer := ""
+	var postRendererArgs []string
 	kubeVersion := ""
 	if opt != nil {
 		postRenderer = opt.PostRenderer
+		postRendererArgs = opt.PostRendererArgs
 		kubeVersion = opt.KubeVersion
 	}
 	flags = st.appendPostRenderFlags(flags, release, postRenderer)
+	flags = st.appendPostRenderArgsFlags(flags, release, postRendererArgs)
 	flags = st.appendApiVersionsFlags(flags, release, kubeVersion)
 	flags = st.appendChartDownloadTLSFlags(flags, release)
 
@@ -2665,10 +2709,18 @@ func (st *HelmState) flagsForDiff(helm helmexec.Interface, release *ReleaseSpec,
 	}
 	flags = st.appendPostRenderFlags(flags, release, postRenderer)
 
+	var postRendererArgs []string
+	if opt != nil {
+		postRendererArgs = opt.PostRendererArgs
+	}
+	flags = st.appendPostRenderArgsFlags(flags, release, postRendererArgs)
+
 	common, files, err := st.namespaceAndValuesFlags(helm, release, workerIndex)
 	if err != nil {
 		return nil, files, err
 	}
+	flags = st.appendExtraDiffFlags(flags, opt)
+
 	return append(flags, common...), files, nil
 }
 
@@ -3180,11 +3232,12 @@ func (ar *AffectedReleases) DisplayAffectedReleases(logger *zap.SugaredLogger) {
 		logger.Info("\nFAILED RELEASES:")
 		tbl, _ := prettytable.NewTable(prettytable.Column{Header: "NAME"},
 			prettytable.Column{Header: "CHART", MinWidth: 6},
-			prettytable.Column{Header: "VERSION", AlignRight: true},
+			prettytable.Column{Header: "VERSION", MinWidth: 6},
+			prettytable.Column{Header: "DURATION", AlignRight: true},
 		)
 		tbl.Separator = "   "
 		for _, release := range ar.Failed {
-			err := tbl.AddRow(release.Name, release.Chart, release.installedVersion)
+			err := tbl.AddRow(release.Name, release.Chart, release.installedVersion, release.duration.Round(time.Second))
 			if err != nil {
 				logger.Warn("Could not add row, %v", err)
 			}
@@ -3477,7 +3530,10 @@ func (st *HelmState) Reverse() {
 }
 
 func (st *HelmState) getOCIChart(release *ReleaseSpec, tempDir string, helm helmexec.Interface) (*string, error) {
-	qualifiedChartName, chartName, chartVersion := st.getOCIQualifiedChartName(release)
+	qualifiedChartName, chartName, chartVersion, err := st.getOCIQualifiedChartName(release, helm)
+	if err != nil {
+		return nil, err
+	}
 
 	if qualifiedChartName == "" {
 		return nil, nil
@@ -3543,7 +3599,7 @@ func (st *HelmState) getOCIChart(release *ReleaseSpec, tempDir string, helm helm
 	return &chartPath, nil
 }
 
-func (st *HelmState) getOCIQualifiedChartName(release *ReleaseSpec) (qualifiedChartName, chartName, chartVersion string) {
+func (st *HelmState) getOCIQualifiedChartName(release *ReleaseSpec, helm helmexec.Interface) (qualifiedChartName, chartName, chartVersion string, err error) {
 	chartVersion = "latest"
 	if release.Version != "" {
 		chartVersion = release.Version
@@ -3563,6 +3619,9 @@ func (st *HelmState) getOCIQualifiedChartName(release *ReleaseSpec) (qualifiedCh
 			return
 		}
 		qualifiedChartName = fmt.Sprintf("%s/%s:%s", repo.URL, chartName, chartVersion)
+	}
+	if chartVersion == "latest" && helm.IsVersionAtLeast("3.8.0") {
+		return "", "", "", fmt.Errorf("the version for OCI charts should be semver compliant, the latest tag is not supported anymore for helm >= 3.8.0")
 	}
 	return
 }

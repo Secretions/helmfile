@@ -39,6 +39,55 @@ func (st *HelmState) appendPostRenderFlags(flags []string, release *ReleaseSpec,
 	return flags
 }
 
+// append post-renderer-args flags to helm flags
+func (st *HelmState) appendPostRenderArgsFlags(flags []string, release *ReleaseSpec, postRendererArgs []string) []string {
+	switch {
+	case len(release.PostRendererArgs) != 0:
+		for _, arg := range release.PostRendererArgs {
+			if arg != "" {
+				flags = append(flags, "--post-renderer-args", arg)
+			}
+		}
+	case len(postRendererArgs) != 0:
+		for _, arg := range postRendererArgs {
+			if arg != "" {
+				flags = append(flags, "--post-renderer-args", arg)
+			}
+		}
+	case len(st.HelmDefaults.PostRendererArgs) != 0:
+		for _, arg := range st.HelmDefaults.PostRendererArgs {
+			if arg != "" {
+				flags = append(flags, "--post-renderer-args", arg)
+			}
+		}
+	}
+	return flags
+}
+
+func (st *HelmState) appendWaitForJobsFlags(flags []string, release *ReleaseSpec, ops *SyncOpts) []string {
+	switch {
+	case release.WaitForJobs != nil && *release.WaitForJobs:
+		flags = append(flags, "--wait-for-jobs")
+	case ops != nil && ops.WaitForJobs:
+		flags = append(flags, "--wait-for-jobs")
+	case release.WaitForJobs == nil && st.HelmDefaults.WaitForJobs:
+		flags = append(flags, "--wait-for-jobs")
+	}
+	return flags
+}
+
+func (st *HelmState) appendWaitFlags(flags []string, release *ReleaseSpec, ops *SyncOpts) []string {
+	switch {
+	case release.Wait != nil && *release.Wait:
+		flags = append(flags, "--wait")
+	case ops != nil && ops.Wait:
+		flags = append(flags, "--wait")
+	case release.Wait == nil && st.HelmDefaults.Wait:
+		flags = append(flags, "--wait")
+	}
+	return flags
+}
+
 // append post-renderer flags to helm flags
 func (st *HelmState) appendCascadeFlags(flags []string, helm helmexec.Interface, release *ReleaseSpec, cascade string) []string {
 	// see https://github.com/helm/helm/releases/tag/v3.12.1

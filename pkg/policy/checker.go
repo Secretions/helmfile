@@ -13,7 +13,7 @@ import (
 
 var (
 	EnvironmentsAndReleasesWithinSameYamlPartErr = errors.New("environments and releases cannot be defined within the same YAML part. Use --- to extract the environments into a dedicated part")
-	topConfigKeysRegex                           = regexp.MustCompile(`^[a-zA-Z]+: *$`)
+	topConfigKeysRegex                           = regexp.MustCompile(`^[a-zA-Z]+:`)
 	separatorRegex                               = regexp.MustCompile(`^--- *$`)
 	topkeysPriority                              = map[string]int{
 		"bases":        0,
@@ -37,7 +37,9 @@ func forbidEnvironmentsWithReleases(filePath string, content []byte) (bool, erro
 		if k == "environments" || k == "releases" || k == "---" {
 			if _, ok := resultKeys[k]; !ok {
 				result = append(result, k)
-				resultKeys[k] = nil
+				if k != "---" {
+					resultKeys[k] = nil
+				}
 			}
 		}
 	}
