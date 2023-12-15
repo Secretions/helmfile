@@ -2421,7 +2421,6 @@ func TestConditionEnabled(t *testing.T) {
 		values    map[string]any
 		want      bool
 		wantErr   bool
-		wantPanic bool
 	}{
 		{
 			name:      "enabled",
@@ -2444,6 +2443,17 @@ func TestConditionEnabled(t *testing.T) {
 			want: false,
 		},
 		{
+			name:      "typo in condition",
+			condition: "fooo.enabled",
+			values: map[string]any{
+				"foo": map[string]any{
+					"enabled": true,
+				},
+			},
+			want:    false,
+			wantErr: true,
+		},
+		{
 			name:      "missing enabled",
 			condition: "foo.enabled",
 			values: map[string]any{
@@ -2459,13 +2469,15 @@ func TestConditionEnabled(t *testing.T) {
 			values: map[string]any{
 				"foo": nil,
 			},
-			wantPanic: true,
+			want:    false,
+			wantErr: true,
 		},
 		{
 			name:      "foo missing",
 			condition: "foo.enabled",
 			values:    map[string]any{},
-			wantPanic: true,
+			want:      false,
+			wantErr:   true,
 		},
 		{
 			name:      "wrong suffix",
@@ -2494,13 +2506,6 @@ func TestConditionEnabled(t *testing.T) {
 	for i := range tests {
 		tt := tests[i]
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.wantPanic {
-				defer func() {
-					if r := recover(); r == nil {
-						t.Errorf("ConditionEnabled() for %s expected panic", tt.name)
-					}
-				}()
-			}
 			res, err := ConditionEnabled(ReleaseSpec{Condition: tt.condition}, tt.values)
 			if tt.wantErr {
 				if err == nil {
@@ -3171,7 +3176,7 @@ func TestGetOCIQualifiedChartName(t *testing.T) {
 					},
 				},
 			},
-			helmVersion: "3.13.2",
+			helmVersion: "3.13.3",
 			expected: []struct {
 				qualifiedChartName string
 				chartName          string
@@ -3192,7 +3197,7 @@ func TestGetOCIQualifiedChartName(t *testing.T) {
 					},
 				},
 			},
-			helmVersion: "3.13.2",
+			helmVersion: "3.13.3",
 			wantErr:     true,
 		},
 		{
@@ -3227,7 +3232,7 @@ func TestGetOCIQualifiedChartName(t *testing.T) {
 					},
 				},
 			},
-			helmVersion: "3.13.2",
+			helmVersion: "3.13.3",
 			expected: []struct {
 				qualifiedChartName string
 				chartName          string
