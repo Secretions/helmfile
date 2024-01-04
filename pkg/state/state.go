@@ -1126,19 +1126,16 @@ type PrepareChartKey struct {
 //
 // If exists, it will also patch resources by json patches, strategic-merge patches, and injectors.
 func (st *HelmState) PrepareCharts(helm helmexec.Interface, dir string, concurrency int, helmfileCommand string, opts ChartPrepareOptions) (map[PrepareChartKey]string, []error) {
-	var selected []ReleaseSpec
-
-	if len(st.Selectors) > 0 {
-		var err error
-
-		// This and releasesNeedCharts ensures that we run operations like helm-dep-build and prepare-hook calls only on
-		// releases that are (1) selected by the selectors and (2) to be installed.
-		selected, err = st.GetSelectedReleases(opts.IncludeTransitiveNeeds)
+	if !opts.SkipResolve {
+		updated, err := st.ResolveDeps()
 		if err != nil {
 			return nil, []error{err}
 		}
-	} else {
-		selected = st.Releases
+		*st = *updated
+	}
+	selected, err := st.GetSelectedReleases(opts.IncludeTransitiveNeeds)
+	if err != nil {
+		return nil, []error{err}
 	}
 
 	releases := releasesNeedCharts(selected)
@@ -1151,14 +1148,6 @@ func (st *HelmState) PrepareCharts(helm helmexec.Interface, dir string, concurre
 
 	jobQueue := make(chan *ReleaseSpec, len(releases))
 	results := make(chan *chartPrepareResult, len(releases))
-
-	if !opts.SkipResolve {
-		updated, err := st.ResolveDeps()
-		if err != nil {
-			return nil, []error{err}
-		}
-		*st = *updated
-	}
 
 	var builds []*chartPrepareResult
 
@@ -2214,18 +2203,21 @@ func markExcludedReleases(releases []ReleaseSpec, selectors []string, commonLabe
 		filters = append(filters, f)
 	}
 	for _, r := range releases {
-		if r.Labels == nil {
-			r.Labels = map[string]string{}
-		}
-		// Let the release name, namespace, and chart be used as a tag
-		r.Labels["name"] = r.Name
-		r.Labels["namespace"] = r.Namespace
-		// Strip off just the last portion for the name stable/newrelic would give newrelic
-		chartSplit := strings.Split(r.Chart, "/")
-		r.Labels["chart"] = chartSplit[len(chartSplit)-1]
-		// Merge CommonLabels into release labels
-		for k, v := range commonLabels {
-			r.Labels[k] = v
+		// Do not add any label without any filter, see #276
+		if len(filters) > 0 {
+			if r.Labels == nil {
+				r.Labels = map[string]string{}
+			}
+			// Let the release name, namespace, and chart be used as a tag
+			r.Labels["name"] = r.Name
+			r.Labels["namespace"] = r.Namespace
+			// Strip off just the last portion for the name stable/newrelic would give newrelic
+			chartSplit := strings.Split(r.Chart, "/")
+			r.Labels["chart"] = chartSplit[len(chartSplit)-1]
+			// Merge CommonLabels into release labels
+			for k, v := range commonLabels {
+				r.Labels[k] = v
+			}
 		}
 		var filterMatch bool
 		for _, f := range filters {
