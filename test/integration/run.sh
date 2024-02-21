@@ -12,6 +12,7 @@ if [[ ! -d "${dir}" ]]; then dir="${PWD}"; fi
 
 . "${dir}/lib/output.sh"
 . "${dir}/lib/ensure.sh"
+. "${dir}/lib/version.sh"
 
 
 # GLOBALS -----------------------------------------------------------------------------------------------------------
@@ -26,7 +27,7 @@ export HELM_DATA_HOME="${helm_dir}/data"
 export HELM_HOME="${HELM_DATA_HOME}"
 export HELM_PLUGINS="${HELM_DATA_HOME}/plugins"
 export HELM_CONFIG_HOME="${helm_dir}/config"
-HELM_DIFF_VERSION="${HELM_DIFF_VERSION:-3.9.2}"
+HELM_DIFF_VERSION="${HELM_DIFF_VERSION:-3.9.4}"
 HELM_SECRETS_VERSION="${HELM_SECRETS_VERSION:-3.15.0}"
 export GNUPGHOME="${PWD}/${dir}/.gnupg"
 export SOPS_PGP_FP="B2D6D7BBEC03B2E66571C8C00AD18E16CFDEF700"
@@ -76,6 +77,7 @@ ${kubectl} create namespace ${test_ns} || fail "Could not create namespace ${tes
 
 # TEST CASES----------------------------------------------------------------------------------------------------------
 
+. ${dir}/test-cases/suppress-output-line-regex.sh
 . ${dir}/test-cases/include-template-func.sh
 . ${dir}/test-cases/happypath.sh
 . ${dir}/test-cases/chartify-with-non-chart-dir.sh
@@ -90,6 +92,7 @@ ${kubectl} create namespace ${test_ns} || fail "Could not create namespace ${tes
 . ${dir}/test-cases/chart-needs.sh
 . ${dir}/test-cases/postrender.sh
 . ${dir}/test-cases/chartify.sh
+. ${dir}/test-cases/deps-mr-1011.sh
 
 # ALL DONE -----------------------------------------------------------------------------------------------------------
 
