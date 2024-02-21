@@ -299,7 +299,7 @@ releases:
         - postsync
       showlogs: true
       command: sleep
-      args: [5s]
+      args: [5]
 `,
 			},
 			selectors: []string{"app=test"},
@@ -347,7 +347,7 @@ first-pass rendering output of "helmfile.yaml.part.0":
 26:         - postsync
 27:       showlogs: true
 28:       command: sleep
-29:       args: [5s]
+29:       args: [5]
 30: 
 
 first-pass produced: &{default  map[] map[]}
@@ -385,7 +385,7 @@ second-pass rendering result of "helmfile.yaml.part.0":
 26:         - postsync
 27:       showlogs: true
 28:       command: sleep
-29:       args: [5s]
+29:       args: [5]
 30: 
 
 merged environment: &{default  map[] map[]}
