@@ -1783,7 +1783,7 @@ func (st *HelmState) prepareDiffReleases(helm helmexec.Interface, additionalValu
 		o.Apply(opt)
 	}
 
-	mu := &sync.Mutex{}
+	mu := &sync.RWMutex{}
 	deployedReleases := map[string]bool{}
 
 	isDeployed := func(r *ReleaseSpec) bool {

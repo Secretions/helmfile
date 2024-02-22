@@ -20,7 +20,7 @@ func TestDestroy_2(t *testing.T) {
 		error         string
 		files         map[string]string
 		selectors     []string
-		lists         map[exectest.ListKey]string
+		lists         map[exectest.ListKey]helmexec.HelmReleaseOutput
 		diffs         map[exectest.DiffKey]error
 		upgraded      []exectest.Release
 		deleted       []exectest.Release
